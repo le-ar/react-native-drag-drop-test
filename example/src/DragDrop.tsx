@@ -19,6 +19,7 @@ import Animated, {
   type AnimatedRef,
   type MeasuredDimensions,
   type SharedValue,
+  useAnimatedStyle,
 } from 'react-native-reanimated';
 import { move } from 'react-native-redash';
 import { AutoScrollRootContext } from './DragDropScroll';
@@ -33,12 +34,16 @@ export interface DragDropItemType<T> {
 
 export interface DragDropAreaHandler<T> {
   groupId?: string;
+  axis: {
+    horizontal: boolean;
+    vertical: boolean;
+  };
   measure: () => MeasuredDimensions | null;
   measureItem: (itemId: number | string) => MeasuredDimensions | null;
   itemMoved: (
     item: DragDropItemType<T>,
     hoverMeasurement: MeasuredDimensions
-  ) => [ids: (number | string)[], from: number, to: number] | null;
+  ) => [from: number, to: number] | null;
   tryPutItem: (
     item: DragDropItemType<T>,
     hoverMeasurement: MeasuredDimensions
@@ -61,7 +66,8 @@ export interface DragDropContextType {
       groupId?: string;
     },
     item: DragDropItemType<unknown>,
-    itemJSX: JSX.Element
+    itemJSX: JSX.Element,
+    onEnd?: () => void
   ) => void;
   registerDragDropArea: (handler: DragDropAreaHandler<unknown>) => number;
   unregisterDragDropArea: (id: number) => void;
@@ -88,12 +94,14 @@ export function DragDropContextProvider(props: DragDropContextProviderProps) {
   } = useContext(HoveredItemContext);
   const { startScroll, stopScroll } = useContext(AutoScrollRootContext);
 
+  //! Переделай, непонятно
   const dragDropItemMeta = useSharedValue<
     | [
         Parameters<DragDropContextType['startDrag']>[0],
         Parameters<DragDropContextType['startDrag']>[1],
         position: { x: number; y: number },
-        size: { width: number; height: number }
+        size: { width: number; height: number },
+        Parameters<DragDropContextType['startDrag']>[3]
       ]
     | null
   >(null);
@@ -145,7 +153,7 @@ export function DragDropContextProvider(props: DragDropContextProviderProps) {
       if (startDragMeta.current == null) {
         return;
       }
-      const [area, item, itemJSX] = startDragMeta.current;
+      const [area, item, itemJSX, onEnd] = startDragMeta.current;
 
       const position = { x: itemMeasurement.pageX, y: itemMeasurement.pageY };
       const size = {
@@ -154,14 +162,14 @@ export function DragDropContextProvider(props: DragDropContextProviderProps) {
       };
 
       setHoveredItem(itemJSX, position, size);
-      dragDropItemMeta.value = [area, item, position, size];
+      dragDropItemMeta.value = [area, item, position, size, onEnd];
     },
     [dragDropItemMeta, setHoveredItem]
   );
 
   const startDrag = useCallback<DragDropContextType['startDrag']>(
-    (area, item, itemJSX) => {
-      startDragMeta.current = [area, item, itemJSX];
+    (area, item, itemJSX, onEnd) => {
+      startDragMeta.current = [area, item, itemJSX, onEnd];
       const itemId = item.id;
       runOnUI(() => {
         'worklet';
@@ -269,16 +277,21 @@ export function DragDropContextProvider(props: DragDropContextProviderProps) {
           if (dragDropItemMeta.value == null) {
             return;
           }
+          const areaAxis =
+            dragDropAreas.value[dragDropItemMeta.value[0].id]?.axis;
           const position = dragDropItemMeta.value[2];
+
           const newPosition = {
-            x: position.x + e.changeX,
-            y: position.y + e.changeY,
+            x: position.x + (areaAxis?.horizontal ? e.changeX : 0.0),
+            y: position.y + (areaAxis?.vertical ? e.changeY : 0.0),
           };
+
           dragDropItemMeta.value = [
             dragDropItemMeta.value[0],
             dragDropItemMeta.value[1],
             newPosition,
             dragDropItemMeta.value[3],
+            dragDropItemMeta.value[4],
           ];
 
           moveHoveredItem(newPosition);
@@ -288,6 +301,7 @@ export function DragDropContextProvider(props: DragDropContextProviderProps) {
         .onFinalize(() => {
           if (dragDropItemMeta.value != null) {
             runOnJS(setMoveAnimActive)(false);
+            dragDropItemMeta.value[4]?.();
             dragDropItemMeta.value = null;
             stopScroll();
             runOnJS(clearHoveredItem)();
@@ -306,6 +320,7 @@ export function DragDropContextProvider(props: DragDropContextProviderProps) {
     [
       setMoveAnimActive,
       dragDropItemMeta,
+      dragDropAreas.value,
       moveHoveredItem,
       hoveredItemMeasurement,
       measureHoveredItem,
@@ -369,6 +384,10 @@ export function useDragDropArea<T, TComponent extends Component, M = undefined>(
   handlerCallbacks: useDragDropAreaHandlers<T, M>,
   config?: {
     groupId?: string;
+    axis?: {
+      horizontal?: boolean;
+      vertical?: boolean;
+    };
   }
 ): useDragDropAreaReturn<T, M> {
   const { registerDragDropArea, unregisterDragDropArea } =
@@ -377,21 +396,6 @@ export function useDragDropArea<T, TComponent extends Component, M = undefined>(
   const [items, setItems] = useState<DragDropItemType<T>[]>(() =>
     initialItems.map((item) => ({ id: extractId(item), data: item }))
   );
-
-  // const itemsMap = useMemo(
-  //   () =>
-  //     items.reduce<{ [key: number | string]: DragDropItemType<T> }>(
-  //       (map, item) => {
-  //         map[item.id] = item;
-  //         return map;
-  //       },
-  //       {}
-  //     ),
-  //   // eslint-disable-next-line react-hooks/exhaustive-deps
-  //   [initialItems]
-  // );
-
-  //   const itemIds = useDerivedValue(() => items.map((item) => item.id), [items]);
 
   const measureArea = useCallback(() => {
     'worklet';
@@ -417,20 +421,6 @@ export function useDragDropArea<T, TComponent extends Component, M = undefined>(
     },
     []
   );
-  // const moveItem2 = useCallback(
-  //   (ids: (string | number)[]) => {
-  //     const newItems: DragDropItemType<T>[] = [];
-  //     for (const id of ids) {
-  //       const item = itemsMap[id];
-  //       if (item != null) {
-  //         newItems.push(item);
-  //       }
-  //     }
-  //     console.log(ids);
-  //     setItems(newItems);
-  //   },
-  //   [itemsMap]
-  // );
 
   const itemMovedCb = handlerCallbacks.itemMoved;
   const itemMoved = useCallback<DragDropAreaHandler<T>['itemMoved']>(
@@ -438,8 +428,7 @@ export function useDragDropArea<T, TComponent extends Component, M = undefined>(
       'worklet';
       const movedResult = itemMovedCb(item, hoverMeasurement);
       if (movedResult != null) {
-        runOnJS(moveItem)(movedResult[1], movedResult[2]);
-        // runOnJS(moveItem2)(movedResult[0]);
+        runOnJS(moveItem)(movedResult[0], movedResult[1]);
       }
       return movedResult;
     },
@@ -453,7 +442,6 @@ export function useDragDropArea<T, TComponent extends Component, M = undefined>(
       const movedResult = tryPutItemCb(item, hoverMeasurement);
       if (movedResult != null) {
         runOnJS(putItem)(item, movedResult[0]);
-        // runOnJS(moveItem2)(movedResult[0]);
       }
       return movedResult;
     },
@@ -473,6 +461,10 @@ export function useDragDropArea<T, TComponent extends Component, M = undefined>(
   const handler = useMemo<DragDropAreaHandler<T>>(
     () => ({
       groupId: config?.groupId,
+      axis: {
+        horizontal: config?.axis?.horizontal ?? true,
+        vertical: config?.axis?.vertical ?? true,
+      },
       measure: measureArea,
       measureItem: handlerCallbacks.measureItem,
       itemMoved,
@@ -481,6 +473,7 @@ export function useDragDropArea<T, TComponent extends Component, M = undefined>(
     }),
     [
       config?.groupId,
+      config?.axis,
       measureArea,
       handlerCallbacks.measureItem,
       itemMoved,
@@ -555,7 +548,6 @@ export function DragDropItem<T, M = undefined>(props: DragDropItemProps<T, M>) {
   const animatedRef = useAnimatedRef<Animated.View>();
   const jsxRef = useRef<JSX.Element>();
   const isActive = useSharedValue(false);
-  const isActiveT = useSharedValue(true);
 
   const itemId = item.id;
   const drag = useCallback(() => {
@@ -563,10 +555,15 @@ export function DragDropItem<T, M = undefined>(props: DragDropItemProps<T, M>) {
       startDrag(
         { id: areaId, groupId },
         item,
-        renderItem(item, isActiveT, drag)
+        renderItem(item, isActive, drag),
+        () => {
+          'worklet';
+          isActive.value = false;
+        }
       );
+      isActive.value = true;
     }
-  }, [areaId, groupId, isActiveT, item, renderItem, startDrag]);
+  }, [areaId, groupId, isActive, item, renderItem, startDrag]);
 
   const jsx = useMemo(() => {
     const jsxLocal = renderItem(item, isActive, drag);
@@ -590,14 +587,22 @@ export function DragDropItem<T, M = undefined>(props: DragDropItemProps<T, M>) {
     return registerItemHandler(itemId, handler, meta);
   }, [handler, itemId, meta, registerItemHandler]);
 
+  const viewStyle = useAnimatedStyle(
+    () => ({
+      opacity: isActive.value ? 0.0 : 1.0,
+    }),
+    [isActive]
+  );
+
   return (
     <Animated.View
       ref={animatedRef}
-      layout={LinearTransition.withCallback((f) => {
+      layout={LinearTransition.duration(200).withCallback((f) => {
         if (f) {
           onTransitionDone(itemId);
         }
       })}
+      style={viewStyle}
     >
       {jsx}
     </Animated.View>

@@ -21,7 +21,13 @@ export function useDragDropList<T, TComponent extends Component>(
   onChange: (items: T[], from: number, to: number) => void,
   renderItem: DragDropRenderItem<T>,
   extractId: (item: T) => number | string,
-  groupId?: string
+  config?: {
+    groupId?: string;
+    axis?: {
+      horizontal?: boolean;
+      vertical?: boolean;
+    };
+  }
 ) {
   const itemIds = useSharedValue<(number | string)[]>(
     initialItems.map((item) => extractId(item))
@@ -70,40 +76,6 @@ export function useDragDropList<T, TComponent extends Component>(
           true
         );
       };
-
-      // handlersMap.modify(
-      //   (value: { [key: string | number]: DragDropItemHandler }) => {
-      //     'worklet';
-      //     value[id] = handler;
-      // return value
-      //   },
-      //   true
-      // );
-
-      // return () => {
-      //   handlersMap.modify(
-      //     (value: { [key: string | number]: DragDropItemHandler }) => {
-      //       'worklet';
-      //       delete value[id];
-      // return value
-      //     },
-      //     true
-      //   );
-      // };
-      // handlersMap.modify((value) => {
-      //   'worklet';
-      //   DLRemoveItem(value, id);
-      //   DLAddItem(value, id, handler, meta.prevId ?? null);
-      //   return value;
-      // });
-
-      // return () => {
-      //   handlersMap.modify((value) => {
-      //     'worklet';
-      //     DLRemoveItem(value, id);
-      //     return value;
-      //   });
-      // };
     },
     [handlers, handlersMap]
   );
@@ -220,145 +192,9 @@ export function useDragDropList<T, TComponent extends Component>(
         itemIds;
         runOnJS(onChange)([], index, indexTo);
 
-        return [
-          handlers.value
-            .map((h) => h?.id)
-            .filter((id): id is string | number => id != null),
-          index,
-          indexTo,
-        ];
+        return [index, indexTo];
       }
       return null;
-
-      //!
-      // // const index = DLFindIndex(handlersMap.value, item.id);
-      // // console.log('ITEM MOVED1');
-      // const listItem = handlersMap.value.nodes[item.id] ?? null;
-
-      // // let log = '';
-      // // const addLog = (newLog: string) => (log = log + '\n' + newLog);
-
-      // // let indexTo = index;
-      // // let indexLocal = index;
-      // let listItemLocal = listItem;
-      // let listItemTo = listItem;
-      // const centerRoot = hoverMeasurement.pageY + hoverMeasurement.height / 2;
-      // let i = 0;
-      // while (listItemLocal != null && i < 100) {
-      //   const prevId = listItemLocal.prevId;
-      //   if (
-      //     prevId != null &&
-      //     movingIds.value.every((movingId) => movingId !== prevId)
-      //   ) {
-      //     const prevMeasurement =
-      //       handlersMap.value.nodes[prevId]?.data.measure();
-      //     if (prevMeasurement != null) {
-      //       const minY =
-      //         prevMeasurement.pageY +
-      //         (prevMeasurement.height + hoverMeasurement.height) / 2;
-      //       // addLog(
-      //       //   `===== MOVE UP\n${index} ${indexLocal} ${
-      //       //     handlersMap.value.nodes[prevId]?.id
-      //       //   } ${prevId}\n${centerRoot} ${minY} ${centerRoot < minY}`
-      //       // );
-      //       if (centerRoot < minY) {
-      //         // indexTo = indexLocal - 1;
-      //         listItemTo = handlersMap.value.nodes[prevId] ?? null;
-      //         // movingIds.modify((value: (string | number)[]) => {
-      //         //   'worklet';
-      //         //   value.push(prevId!);
-      //         //   return value;
-      //         // }, true);
-      //       } else {
-      //         break;
-      //       }
-      //     }
-      //   }
-      //   listItemLocal =
-      //     prevId == null ? null : handlersMap.value.nodes[prevId] ?? null;
-      //   // indexLocal--;
-      //   i++;
-      // }
-      // // if (indexTo !== index) {
-      // //   addLog(`INDEX TO AFETER UP ${indexTo}`);
-      // // }
-
-      // // indexLocal = indexTo;
-      // listItemLocal = listItemTo;
-      // // while (listItemLocal != null && i < 100) {
-      // //   const nextId = listItemLocal.nextId;
-      // //   if (
-      // //     nextId != null &&
-      // //     movingIds.value.every((movingId) => movingId !== nextId)
-      // //   ) {
-      // //     const nextMeasurement =
-      // //       handlersMap.value.nodes[nextId]?.data.measure();
-      // //     if (nextMeasurement != null) {
-      // //       const minY =
-      // //         nextMeasurement.pageY +
-      // //         (nextMeasurement.height - hoverMeasurement.height) / 2;
-      // //       // addLog(
-      // //       //   `===== MOVE DOWN\n${index} ${indexLocal} ${centerRoot} ${minY} ${
-      // //       //     centerRoot > minY
-      // //       //   }`
-      // //       // );
-      // //       if (centerRoot > minY) {
-      // //         listItemTo = handlersMap.value.nodes[nextId] ?? null;
-      // //         // indexTo = indexLocal + 1;
-      // //         // movingIds.modify((value: (string | number)[]) => {
-      // //         //   'worklet';
-      // //         //   value.push(nextId!);
-      // //         //   return value;
-      // //         // }, true);
-      // //       } else {
-      // //         break;
-      // //       }
-      // //     }
-      // //   }
-      // //   listItemLocal =
-      // //     nextId == null ? null : handlersMap.value.nodes[nextId] ?? null;
-      // //   // indexLocal++;
-      // //   i++;
-      // // }
-      // // if (indexTo !== index) {
-      // //   addLog(`INDEX TO AFETER DOWN ${indexTo}`);
-      // // }
-
-      // // indexTo = Math.min(itemIds.value.length - 1, Math.max(0, indexTo));
-      // if (
-      //   // indexTo !== index &&
-      //   listItem != null &&
-      //   listItemTo != null &&
-      //   listItem !== listItemTo
-      // ) {
-      //   // addLog(
-      //   //   `\n=====\nID: ${item.id} INDEX: ${index}\nID: ${listItem?.id} INDEX: ${indexTo}\n=====`
-      //   // );
-      //   handlersMap.modify((value) => {
-      //     'worklet';
-      //     if (
-      //       listItem != null &&
-      //       listItemTo != null &&
-      //       listItem !== listItemTo
-      //     ) {
-      //       DLSwapItems(value, listItem, listItemTo);
-      //     }
-      //     return value;
-      //   }, true);
-      //   // console.log('IDS', DLGetIds(handlersMap.value));
-      //   // console.log(log);
-      //   // return [index, indexTo]
-      //   // runOnJS(moveItem)(index, indexTo);
-      //   // itemIds.value = move(itemIds.value, index, indexTo);
-      // }
-
-      // if (DLFindLoop(handlersMap.value)) {
-      //   console.log('LOOOP');
-      // }
-
-      // const ids = DLGetIds(handlersMap.value);
-      // // console.log('ITEM MOVED2');
-      // return [ids, listItem?.id ?? 0, listItemTo?.id ?? 0];
     },
     [handlers, movingIds, itemIds, onChange]
   );
@@ -473,7 +309,7 @@ export function useDragDropList<T, TComponent extends Component>(
     renderItem,
     extractId,
     handlerCallbacks,
-    { groupId }
+    config
   );
 
   return useMemo(() => ({ ...v, onTransitionDone }), [v, onTransitionDone]);
